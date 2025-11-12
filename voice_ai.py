@@ -1,95 +1,103 @@
-import os
-from dotenv import load_dotenv
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import openai
+# ================================================================
+# 🤖 음성 분석 서버 (FastAPI)
+# ================================================================
+# - 클라이언트로부터 meta(JSON) + 오디오 파일을 multipart/form-data로 받아
+#   AI 모델(Whisper + GPT)을 통해 전사 + 분석 결과를 반환하는 역할
+# - 현재는 실제 AI 호출 없이 mock(가짜) 데이터로 테스트 가능
+# - Flask(question_ai.py)와는 별개의 FastAPI 서버로 동작
+# ================================================================
 
-# ==========================================================
-# 1️⃣ 환경 변수 로드 및 OpenAI API 키 설정
-# ==========================================================
-# .env 파일에서 OPENAI_API_KEY를 읽어옴 (같은 디렉토리에 있어야 함)
-# 예시:  OPENAI_API_KEY=sk-xxxxxx
-load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
+import json
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
+from pydantic import BaseModel
 
-# ==========================================================
-# 2️⃣ Flask 앱 설정 및 CORS 허용
-# ==========================================================
-# Flask 인스턴스 생성
-app = Flask(__name__)
+# ---------------------------------------------------------------
+# 1️⃣ FastAPI 앱 생성 및 CORS 설정
+# ---------------------------------------------------------------
+app = FastAPI(title="Voice AI")
 
-# CORS(Cross-Origin Resource Sharing) 허용
-# 프론트엔드(React, Vue 등)에서 다른 포트로 접근할 수 있게 해줌
-CORS(app)
+# ✅ CORS(Cross-Origin Resource Sharing) 허용
+# - 다른 포트(예: 8080, 3000 등)에서 요청을 받아줄 수 있게 함
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],        # 모든 도메인 허용 (필요 시 수정 가능)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# ==========================================================
-# 3️⃣ 핵심 함수: OpenAI API를 호출해 면접 질문 생성
-# ==========================================================
-def generate_interview_questions(major, job_title):
+# ---------------------------------------------------------------
+# 2️⃣ 응답 DTO 정의 (FastAPI에서는 Pydantic 모델 사용)
+# ---------------------------------------------------------------
+class AnalysisResult(BaseModel):
+    """AI 분석 결과를 반환하는 DTO"""
+    questionId: int | None = None    # 분석 대상 질문 ID (없을 수도 있음)
+    answerText: str                  # 전사된 텍스트
+    score: int                       # AI가 부여한 점수
+    feedback: str                    # 피드백 문장
+
+# ---------------------------------------------------------------
+# 3️⃣ 헬스체크 엔드포인트 (서버 상태 확인용)
+# ---------------------------------------------------------------
+@app.get("/health")
+async def health():
+    """서버가 정상적으로 작동 중인지 확인"""
+    return {"ok": True}
+
+@app.get("/favicon.ico")
+async def favicon():
+    """브라우저에서 자동 요청하는 /favicon.ico 무시"""
+    return Response(status_code=204)
+
+# ---------------------------------------------------------------
+# 4️⃣ 핵심 API: 음성 파일 분석
+# ---------------------------------------------------------------
+@app.post("/analyze", response_model=AnalysisResult)
+async def analyze(
+    meta: str = Form(...),         # 요청의 form-data 중 meta (JSON 문자열)
+    file: UploadFile = File(...),  # 업로드된 음성 파일
+):
     """
-    학과(major)와 직무(job_title)를 기반으로 OpenAI API를 호출하여
-    면접 질문 5개를 리스트 형태로 반환하는 함수.
-    """
-    
-    # GPT에 보낼 프롬프트(명령문) 구성
-    prompt = f"""
-    당신은 전문 면접관입니다. 지원자가 **{major}** 학과를 졸업하고 **{job_title}** 직무에 지원한다고 가정합니다.
-    이 지원자를 평가하기 위한 전문적인 면접 질문 5가지를 **리스트 형태로** 생성해주세요.
-    질문은 한 줄에 하나씩 번호 없이 출력되어야 합니다.
+    🎧 클라이언트로부터 meta + file을 받아 분석 결과 반환
+    - meta: {"interviewId":1,"questionId":101}
+    - file: 오디오(.m4a, .mp3, .wav 등)
     """
 
+    # -----------------------------------------------------------
+    # ① meta 파싱 및 유효성 검사
+    # -----------------------------------------------------------
     try:
-        # OpenAI ChatGPT API 호출
-        response = openai.chat.completions.create(
-            model="gpt-3.5-turbo",  # 모델 지정
-            messages=[
-                {"role": "system", "content": "사용자의 요청에 따라 전문 면접 질문을 생성하는 AI입니다."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.7  # 창의성 조절 (낮을수록 보수적, 높을수록 다양)
-        )
-
-        # 응답 텍스트 추출
-        questions_text = response.choices[0].message.content.strip()
-
-        # 줄 단위로 분리하여 리스트로 반환
-        return [q.strip() for q in questions_text.split('\n') if q.strip()]
-
+        meta_obj = json.loads(meta)   # 문자열 → JSON 변환
+        interview_id = meta_obj.get("interviewId")
+        question_id = meta_obj.get("questionId")
     except Exception as e:
-        # API 호출 실패 시 콘솔에 에러 메시지 출력
-        print(f"⚠️ OpenAI API 호출 중 오류 발생: {e}")
-        return None
+        raise HTTPException(status_code=400, detail=f"invalid meta json: {e}")
 
-# ==========================================================
-# 4️⃣ Flask API 엔드포인트 정의 (프론트 요청 수신)
-# ==========================================================
-@app.route('/api/questions', methods=['POST'])
-def get_questions():
-    """
-    프론트엔드에서 전달받은 JSON 데이터를 기반으로
-    학과와 직무 정보를 추출해 질문을 생성하고 JSON으로 응답.
-    """
-    # JSON 데이터 받기
-    data = request.json
-    major = data.get('major')         # 학과 정보
-    job_title = data.get('job_title') # 직무 정보
+    # -----------------------------------------------------------
+    # ② 파일 유효성 검사
+    # -----------------------------------------------------------
+    if file is None or file.filename is None:
+        raise HTTPException(status_code=400, detail="file missing")
 
-    # 필수 데이터 검증
-    if not major or not job_title:
-        return jsonify({"error": "학과와 직무 정보를 모두 제공해야 합니다."}), 400
+    if not file.filename.lower().endswith((".m4a", ".mp3", ".wav", ".webm", ".ogg")):
+        raise HTTPException(status_code=400, detail="unsupported audio type")
 
-    # OpenAI API 호출
-    questions = generate_interview_questions(major, job_title)
+    # -----------------------------------------------------------
+    # ③ (임시) AI 분석 Mock 로직
+    # -----------------------------------------------------------
+    # 실제 Whisper + GPT 연동 전에 정상 흐름만 검증하는 단계
+    text = f"(mock) interview={interview_id}, question={question_id}, file={file.filename}"
+    score = 87
+    feedback = "발음 명료함, 핵심어 강조 좋음. 말 속도 약간 빠름."
 
-    # 성공 시: 질문 리스트 반환 / 실패 시: 에러 메시지 반환
-    if questions:
-        return jsonify({"questions": questions}), 200
-    else:
-        return jsonify({"error": "면접 질문 생성에 실패했습니다."}), 500
-
-# ==========================================================
-# 5️⃣ Flask 서버 실행
-# ==========================================================
-if __name__ == "__main__":
-    # 0.0.0.0 : 외부 접근 허용 / 포트 5002에서 실행
-    app.run(host="0.0.0.0", port=5002, debug=True)
+    # -----------------------------------------------------------
+    # ④ 결과 DTO로 반환 (FastAPI가 자동 JSON 직렬화)
+    # -----------------------------------------------------------
+    return AnalysisResult(
+        questionId=question_id,
+        answerText=text,
+        score=score,
+        feedback=feedback,
+    )
