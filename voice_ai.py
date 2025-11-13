@@ -1,19 +1,33 @@
+# voice_ai.py
 # ================================================================
-# 🎧 음성 → 텍스트(STT) 전용 서버 
-#  - 클라이언트(또는 스프링 백엔드)에서 meta + 음성파일을 보내면
-#    텍스트로 변환해서 answerText 하나만 반환
-#  - 아직은 Whisper 안 붙이고 mock 텍스트로 동작 (흐름 테스트용)
+# 음성 STT 서버 (FastAPI + OpenAI Whisper)
 # ================================================================
 
+import os
 import json
+from io import BytesIO  # ✅ 추가
+
+from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
+import openai
 
-app = FastAPI(title="Voice STT Server")
+# -----------------------------
+# 0. 환경 변수 / OpenAI 설정
+# -----------------------------
+load_dotenv()
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# CORS 설정 (백엔드 / 프론트에서 접근 가능하도록)
+if not openai.api_key:
+    raise RuntimeError("OPENAI_API_KEY 가 설정되어 있지 않습니다. (.env 확인!)")
+
+# -----------------------------
+# 1. FastAPI 앱 & CORS
+# -----------------------------
+app = FastAPI(title="CareerPass Voice STT")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -22,15 +36,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --------------------------
-# ✅ STT 결과 DTO
-# --------------------------
-class STTResult(BaseModel):
-    answerText: str   # 변환된 텍스트만!
+# -----------------------------
+# 2. 응답 DTO (STT 결과)
+# -----------------------------
+class SttResult(BaseModel):
+    answerText: str  # STT 결과 텍스트만 반환
 
-# --------------------------
-# 헬스체크
-# --------------------------
+# -----------------------------
+# 3. 헬스체크 & 파비콘
+# -----------------------------
 @app.get("/health")
 async def health():
     return {"ok": True}
@@ -39,42 +53,62 @@ async def health():
 async def favicon():
     return Response(status_code=204)
 
-# --------------------------
-# 🎯 핵심: 음성 → 텍스트 엔드포인트
-# --------------------------
-@app.post("/analyze", response_model=STTResult)
+# -----------------------------
+# 4. 핵심 API: /analyze
+# -----------------------------
+@app.post("/analyze", response_model=SttResult)
 async def analyze(
-    meta: str = Form(...),         # form-data 필드 "meta" (JSON 문자열)
-    file: UploadFile = File(...),  # form-data 필드 "file" (음성 파일)
+    meta: str = Form(...),
+    file: UploadFile = File(...),
 ):
     """
-    meta 예시:
-        {"interviewId":1,"questionId":"q-1","userId":10}
-
-    - 프론트: 질문별로 녹음 -> 백엔드(/api/interview/voice/analyze)로 전송
-    - 스프링: meta + file 그대로 여기(5001/analyze)로 포워딩
-    - 이 서버: STT(지금은 mock) 후 answerText만 반환
+    🎧 음성 파일을 Whisper에 보내서 텍스트로 변환
+    - meta: 인터뷰 / 질문 정보 (백엔드에서 사용하는 용도)
+    - file: .m4a / .mp3 / .wav / .webm / .ogg 등
     """
 
     # 1) meta JSON 파싱
     try:
         meta_obj = json.loads(meta)
-        interview_id = meta_obj.get("interviewId")
-        question_id = meta_obj.get("questionId")
-        user_id = meta_obj.get("userId")
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"invalid meta json: {e}")
 
-    # 2) 파일 체크
-    if file is None or file.filename is None:
+    interview_id = meta_obj.get("interviewId")
+    question_id = meta_obj.get("questionId")
+    user_id = meta_obj.get("userId")  # 없어도 됨 (null 허용)
+
+    # 2) 파일 기본 검증
+    if not file or not file.filename:
         raise HTTPException(status_code=400, detail="file missing")
 
-    if not file.filename.lower().endswith((".m4a", ".mp3", ".wav", ".webm", ".ogg")):
+    lower_name = file.filename.lower()
+    if not lower_name.endswith((".m4a", ".mp3", ".wav", ".webm", ".ogg")):
         raise HTTPException(status_code=400, detail="unsupported audio type")
 
-    # 3) (임시) STT mock
-    #    나중에 여기서 Whisper 붙이면 됨
-    text = f"(mock STT) user={user_id}, interview={interview_id}, question={question_id}, file={file.filename}"
+    # 3) Whisper 호출 (실제 STT)
+    try:
+        # ✅ 업로드 파일 바이트 읽어서 BytesIO로 감싸기
+        contents = await file.read()
+        audio_bytes = BytesIO(contents)
+        audio_bytes.name = file.filename  # 🔥 여기서 확장자 포함 이름을 달아줌
 
-    # 4) answerText 하나만 리턴
-    return STTResult(answerText=text)
+        transcription = openai.audio.transcriptions.create(
+            model="gpt-4o-mini-transcribe",  # 또는 "whisper-1"
+            file=audio_bytes,
+            language="ko",
+        )
+
+        # SDK 버전에 따라 text 속성이 있거나, 문자열일 수 있음
+        text = getattr(transcription, "text", None) or str(transcription)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Whisper 호출 실패: {e}")
+
+    # 4) 최종 응답
+    return SttResult(answerText=text)
+
+
+# 로컬 실행용 엔트리포인트
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("voice_ai:app", host="0.0.0.0", port=5001, reload=True)
