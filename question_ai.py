@@ -10,10 +10,12 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # 2. Flask 앱 & CORS
 app = Flask(__name__)
-CORS(app)
 
-# ✅ JSON을 UTF-8로 그대로 내보내기 (이스케이프 방지)
-app.config["JSON_AS_ASCII"] = False
+# ✅ JSON을 UTF-8 한글 그대로 내보내기 (이스케이프 방지용)
+app.config["JSON_AS_ASCII"] = False          # 예전 방식
+app.json.ensure_ascii = False                # Flask 2.x에서 확실하게 적용
+
+CORS(app)
 
 # 3. 질문 생성 함수
 def generate_interview_questions(major, job_title, cover_letter=""):
