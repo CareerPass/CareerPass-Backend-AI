@@ -1,8 +1,62 @@
+# -*- coding: utf-8 -*-
+"""
+Resume Feedback API
+사용자 -> 이력서 입력 -> OpenAI 피드백 생성 -> RDS 저장
+"""
+
+import os
+import pymysql
+from datetime import datetime
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+from dotenv import load_dotenv
 from openai import OpenAI
-from IPython.display import Markdown, display
 
-client = OpenAI(api_key='API_KEY')
 
+
+#환경변수 
+load_dotenv()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=OPENAI_API_KEY)
+app = FastAPI(title="Resume Feedback API")
+
+#실 배포 환경으로 AWS RDS MYSQL 사용
+db = pymysql.connect(
+    host="your-rds-endpoint.ap-northeast-2.rds.amazonaws.com",
+    user="admin",
+    password="yourpassword",
+    database="resume_db",
+    charset="utf8mb4"
+)
+
+cursor = db.cursor()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS resume_feedback (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    resume_text TEXT,
+    feedback_text TEXT,
+    created_at DATETIME
+);
+""")
+
+db.commit()
+
+
+
+#요청 + 응답 모델
+class ResumeInput(BaseModel):
+    userId: int
+    resumeContent: str
+    
+class ResumeFeedback(BaseModel):
+    feedback: str
+    savedId: int
+
+
+
+#프롬포트
 system_message = """
 #이력서를 피드백하는 에이전트 시스템 프롬프트 
 
@@ -117,80 +171,43 @@ system_message = """
 
 """
 
-resume = """
-#이력서
-
----
-
-##인적사항
-- **이름** : 이명지
-- **생년월일** : 2000.09.16 (만 25세)
-- **전화번호** : 010-1234-5678
-- **이메일** : imsosexy@gmail.com
-- **주소** : 서울시 강남구 역삼동
-- **취미** : 코드 리팩터링, 게임, 맛집 투어
-
----
-
-##학력사항
-- 2019.03~2025.02 : 명지대학교 컴퓨터공학과 졸업생
-- 학점 : 3.7/4.5
-- 전공 : 컴퓨터공학
-
----
-
-##경험
-
-### 1. 마이크로소프트 부트캠프 6개월(2024.12~2025.06)
-    - AI 전문가 양성 과정 이수
-    - 사진을 통해 동물의 피부 질환을 예측해주는 프로그램을 만들었습니다
-    - 영어 회화 공부를 재밌게 하기 위해 픽셀 캐릭터를 이용한 회화 공부 게임을 만들었습니다
-    - 감정 일기를 작성하면 감정을 분석해주고 작성 일기를 요약하여 이를 바탕으로 이미지를 생성해주는 프로그램을 만들었습니다.
-    
-### 2. 캡스톤 디자인(2024.03~2024.06)
-    - 지금 먹고싶은 음식 종류(한중일양식), 맛 등을 선택하면 메뉴를 추천해주는 어플리케이션을 만들었습니다.
-
-### 3. 팀프로젝트(2022.09~2022.12)
-    - 카톡 채팅 내역을 기반으로 가장 많이 나온 언어를 찾는 프로그램을 개발했습니다
-    - 구독한 어플리케이션을 한 번에 모아 정기 결제일을 알려주는 프로그램을 개발했습니다
-    
-##자격증 
-    - SQLD
-    - AI 900
-    
----
-
-## 기술 스택
-Python, MySQL, FastAPI, azure, TensorFlow, AutoGen
-
----
-
-## 자기소개
-
-저는 컴퓨터공학을 전공힌 졸업생입니다. 어렸을때부터 컴퓨터에 관심이 많았고, 프로그래밍이 재미있어서 이 전공을 선택하게 되었습니다.
-대학교에 입학한 후에 여러 프로젝트를 진행하면서 실력을 쌓았고, AI에 관심이 많아 관련 여러 프로젝트와 부트캠프에 참여했습니다.
-새로운 기술을 배우는 것을 좋아하고, 팀워크와 리더십이 뛰어나다는 말을 자주 듣습니다. 
-항상 긍정적이고 성실한 마인드로 맡은 업무에 임하고 있습니다.
-귀사에 입사하게 되면 최선을 다하고 성장하는 모습을 보여드리겠습니다. 감사합니다!
-
----
-
-## 병역사항
-- 군필 (육군, 2020.09~2022.03)
-
----
-
-**저는 배움이 빠르며 한 번 맡은 일은 최선을 다해 끝까지 완수해내는 사람입니다. 꼭 뽑이주세요!**
-
-"""
-
-response = client.responses.create(
-    model = "gpt-4o-mini",
-    instructions = system_message,
-    input = "사용자의 이력서 내용입니다 {}".format(resume)
-)
 
 
-print(response)
-display(Markdown(response.output_text))
+#LLM 호출
+def generate_feedback(resume_text: str) -> str:
+    response = client.responses.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": f"사용자가 제출한 이력서 내용입니다:\n\n{resume_text}"}
+        ]
+    )
+    return response.output[0].content[0].text
 
+
+
+
+#DB 저장
+def save_feedback_to_rds(userId: int, resume_text: str, feedback: str) -> int:
+    now = datetime.now()
+    sql = """
+        INSERT INTO resume_feedback (user_id, resume_text, feedback_text, created_at)
+        VALUES (%s, %s, %s, %s)
+    """
+    cursor.execute(sql, (userId, resume_text, feedback, now))
+    db.commit()
+    return cursor.lastrowid
+
+
+
+#FastAPI 엔드포인트
+@app.post("/resume/feedback", response_model=ResumeFeedback)
+async def resume_feedback(req: ResumeInput):
+
+    feedback = generate_feedback(req.resumeContent)
+    saved_id = save_feedback_to_rds(req.userId, req.resumeContent, feedback)
+
+    return ResumeFeedback(
+        feedback=feedback,
+        savedId=saved_id
+    )
