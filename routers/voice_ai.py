@@ -7,34 +7,39 @@ import os
 import json
 from io import BytesIO  # ✅ 추가
 
-from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, APIRouter
 from fastapi.responses import Response
 from pydantic import BaseModel
 import openai
+from openai import OpenAI
 
 # -----------------------------
 # 0. 환경 변수 / OpenAI 설정
 # -----------------------------
-load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
 
-if not openai.api_key:
-    raise RuntimeError("OPENAI_API_KEY 가 설정되어 있지 않습니다. (.env 확인!)")
+voice_router = APIRouter()
+
+VOICE_KEY = os.getenv("QUESTION_VOICE_OPENAI_KEY")
+
+try:
+    client = OpenAI(api_key=VOICE_KEY)
+    print("Voice Router OpenAI 클라이언트 초기화 완료")
+except Exception:
+    print("OpenAI API Key가 설정되지 않았습니다. 분석은 Mock 모드로 작동합니다.")
+    client = None
 
 # -----------------------------
 # 1. FastAPI 앱 & CORS
 # -----------------------------
-app = FastAPI(title="CareerPass Voice STT")
+# app = FastAPI(title="CareerPass Voice STT")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=["*"],
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
 
 # -----------------------------
 # 2. 응답 DTO (STT 결과)
@@ -45,18 +50,18 @@ class SttResult(BaseModel):
 # -----------------------------
 # 3. 헬스체크 & 파비콘
 # -----------------------------
-@app.get("/health")
+@voice_router.get("/health")
 async def health():
     return {"ok": True}
 
-@app.get("/favicon.ico")
+@voice_router.get("/favicon.ico")
 async def favicon():
     return Response(status_code=204)
 
 # -----------------------------
 # 4. 핵심 API: /analyze
 # -----------------------------
-@app.post("/analyze", response_model=SttResult)
+@voice_router.post("/analyze", response_model=SttResult)
 async def analyze(
     meta: str = Form(...),
     file: UploadFile = File(...),
@@ -109,6 +114,6 @@ async def analyze(
 
 
 # 로컬 실행용 엔트리포인트
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("voice_ai:app", host="0.0.0.0", port=5001, reload=True)
+#if __name__ == "__main__":
+#    import uvicorn
+#    uvicorn.run("voice_ai:app", host="0.0.0.0", port=5001, reload=True)
