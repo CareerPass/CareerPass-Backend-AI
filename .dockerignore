@@ -1,0 +1,24 @@
+# .dockerignore
+
+# Git 관련 파일/폴더
+.git
+.gitignore
+
+# Python 관련 파일/폴더
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+
+# 가상 환경 (Local Development)
+venv
+.venv
+
+# 환경 변수 파일 (민감 정보이므로 컨테이너에 넣지 않습니다. AWS Secrets Manager를 사용할 예정입니다.)
+app_sevice.env
+.env
+
+# 로그 및 데이터
+*.log
+data/

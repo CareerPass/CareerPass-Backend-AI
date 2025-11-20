@@ -6,29 +6,77 @@ Resume Feedback API
 
 import os
 import pymysql
+from typing import List
 from datetime import datetime
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, APIRouter
 from pydantic import BaseModel, Field
-from dotenv import load_dotenv
 from openai import OpenAI
+from dotenv import load_dotenv # 환경 변수 로드를 위해 추가
 
-#환경변수 
+# 환경 변수 로드 (HEAD 브랜치에서 가져옴)
 load_dotenv()
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-app = FastAPI(title="Resume Feedback API")
 
-#클라이언트가 서버로
+# FastAPI 라우터 설정 (목표 브랜치 구조 채택)
+resume_router = APIRouter()
+
+# 환경변수 및 OpenAI 클라이언트 초기화 
+RESUME_KEY = os.getenv("RESUME_OPENAI_KEY")
+try:
+    client = OpenAI(api_key=RESUME_KEY)
+    print("Resume Router OpenAI 클라이언트 초기화 완료.")
+except Exception:
+    print("OpenAI API Key가 설정되지 않았습니다. 분석은 Mock 모드로 작동합니다.")
+    client = None
+
+# RDS DB 연결 정보 로드
+DB_HOST = os.getenv("RDS_DB_HOST")
+DB_USER = os.getenv("RDS_DB_USER")
+DB_PASSWORD = os.getenv("RDS_DB_PASSWORD")
+DB_NAME = os.getenv("RDS_DB_NAME")
+
+# 실 배포 환경으로 AWS RDS MYSQL 사용
+try:
+    db = pymysql.connect(
+        host=DB_HOST,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        database=DB_NAME,
+        charset="utf8mb4"
+    )
+
+    cursor = db.cursor()
+
+    # DB 테이블 생성 확인
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS resume_feedback (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        resume_text TEXT,
+        feedback_text TEXT,
+        created_at DATETIME
+    );
+    """)
+
+    db.commit()
+    
+except Exception as e:
+    print(f"Database Connection Error: {e}")
+    db = None
+    cursor = None
+
+
+# 요청 + 응답 모델
 class ResumeInput(BaseModel):
     userId: int
     resumeContent: str
     
-#서버가 클라이언트한테로
+# 서버가 클라이언트한테로
 class FeedbackResponse(BaseModel):
     feedback: str
     userId: int
 
 
-#프롬포트
+# 프롬프트
 system_message = """
 #이력서를 피드백하는 에이전트 시스템 프롬프트 
 
@@ -144,28 +192,59 @@ system_message = """
 """
 
 
-
-#LLM 호출
+# LLM 호출
 def generate_feedback(resume_text: str) -> str:
-    response = client.responses.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": system_message},
-            {"role": "user", "content": f"사용자가 제출한 이력서 내용입니다:\n\n{resume_text}"}
-        ]
-    )
-    return response.output[0].content[0].text
+    if not client:
+        return "API 키가 설정되지 않음"
+    try:
+        response = client.responses.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": f"사용자가 제출한 이력서 내용입니다:\n\n{resume_text}"}
+            ]
+        )
+        return response.output[0].content[0].text
+    
+    except Exception as e:
+        print(f"LLM 호출 실패: {e}")
+        raise HTTPException(status_code=500, detail="LLM 피드백 생성에 실패했습니다.")
 
 
+# DB 저장 (목표 브랜치에서 가져옴)
+def save_feedback_to_rds(userId: int, resume_text: str, feedback: str) -> int:
+    if not db or not cursor:
+        print("DB 연결 오류로 인해 저장 실패.")
+        # HTTPException의 detail 값은 명확하게 수정
+        raise HTTPException(status_code=500, detail="데이터베이스 연결 문제로 인해 저장에 실패했습니다.")
+    try:
+        now = datetime.now()
+        sql = """
+            INSERT INTO resume_feedback (user_id, resume_text, feedback_text, created_at)
+            VALUES (%s, %s, %s, %s)
+        """
+        cursor.execute(sql, (userId, resume_text, feedback, now))
+        db.commit()
+        return cursor.lastrowid
+    except Exception as e:
+        db.rollback()
+        print(f"Database Save Error: {e}")
+        raise HTTPException(status_code=500, detail="피드백 데이터베이스 저장에 실패했습니다.")
 
-#FastAPI 엔드포인트
-@app.post("/resume/feedback", response_model=FeedbackResponse)
+
+# FastAPI 엔드포인트 (라우터 구조 및 DB 저장 활성화)
+@resume_router.post("/resume/feedback", response_model=FeedbackResponse)
 async def resume_feedback(req: ResumeInput):
 
-    #OpenAI 호출 -> 피드백 생성
+    # OpenAI 호출 -> 피드백 생성
     feedback = generate_feedback(req.resumeContent)
 
-    # 디비에 접근 안하고 피드백과 사용자 ID를 즉시 반환
+    # DB에 저장
+    # 목표 브랜치의 의도에 따라 DB 저장 로직을 추가하고
+    # 현재 브랜치의 주석 처리된 반환 로직을 수정했습니다.
+    save_feedback_to_rds(req.userId, req.resumeContent, feedback)
+    
+    # DB 저장 성공 후 피드백과 사용자 ID를 반환
     return FeedbackResponse(
         feedback=feedback,
         userId=req.userId # Spring에서 DB 저장을 위해 사용할 userId 반환
