@@ -186,27 +186,14 @@ def generate_feedback(resume_text: str) -> str:
 
 
 
-
-#DB 저장
-def save_feedback_to_rds(userId: int, resume_text: str, feedback: str) -> int:
-    now = datetime.now()
-    sql = """
-        INSERT INTO resume_feedback (user_id, resume_text, feedback_text, created_at)
-        VALUES (%s, %s, %s, %s)
-    """
-    cursor.execute(sql, (userId, resume_text, feedback, now))
-    db.commit()
-    return cursor.lastrowid
-
-
-
 #FastAPI 엔드포인트
 @app.post("/resume/feedback", response_model=ResumeFeedback)
 async def resume_feedback(req: ResumeInput):
 
     feedback = generate_feedback(req.resumeContent)
-    saved_id = save_feedback_to_rds(req.userId, req.resumeContent, feedback)
 
+    saved_id = 0
+    
     return ResumeFeedback(
         feedback=feedback,
         savedId=saved_id
