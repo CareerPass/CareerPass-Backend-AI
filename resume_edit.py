@@ -12,48 +12,20 @@ from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from openai import OpenAI
 
-
-
 #환경변수 
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=OPENAI_API_KEY)
 app = FastAPI(title="Resume Feedback API")
 
-#실 배포 환경으로 AWS RDS MYSQL 사용
-db = pymysql.connect(
-    host="your-rds-endpoint.ap-northeast-2.rds.amazonaws.com",
-    user="admin",
-    password="yourpassword",
-    database="resume_db",
-    charset="utf8mb4"
-)
-
-cursor = db.cursor()
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS resume_feedback (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    resume_text TEXT,
-    feedback_text TEXT,
-    created_at DATETIME
-);
-""")
-
-db.commit()
-
-
-
-#요청 + 응답 모델
+#클라이언트가 서버로
 class ResumeInput(BaseModel):
     userId: int
     resumeContent: str
     
-class ResumeFeedback(BaseModel):
+#서버가 클라이언트한테로
+class FeedbackResponse(BaseModel):
     feedback: str
-    savedId: int
-
+    userId: int
 
 
 #프롬포트
@@ -187,14 +159,14 @@ def generate_feedback(resume_text: str) -> str:
 
 
 #FastAPI 엔드포인트
-@app.post("/resume/feedback", response_model=ResumeFeedback)
+@app.post("/resume/feedback", response_model=FeedbackResponse)
 async def resume_feedback(req: ResumeInput):
 
+    #OpenAI 호출 -> 피드백 생성
     feedback = generate_feedback(req.resumeContent)
 
-    saved_id = 0
-    
-    return ResumeFeedback(
+    # 디비에 접근 안하고 피드백과 사용자 ID를 즉시 반환
+    return FeedbackResponse(
         feedback=feedback,
-        savedId=saved_id
+        userId=req.userId # Spring에서 DB 저장을 위해 사용할 userId 반환
     )
