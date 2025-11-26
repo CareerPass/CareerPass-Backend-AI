@@ -1,21 +1,30 @@
 import os
-from dotenv import load_dotenv
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+from typing import List
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 import openai
+from openai import OpenAI
 
-# 1. 환경 변수(.env) 로드 및 API 키 설정
-load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
+question_router = APIRouter()
 
-# 2. Flask 앱 & CORS
-app = Flask(__name__)
+QUESTION_KEY = os.environ.get("QUESTION_VOICE_OPENAI_KEY")
 
-# ✅ JSON을 UTF-8 한글 그대로 내보내기 (이스케이프 방지용)
-app.config["JSON_AS_ASCII"] = False          # 예전 방식
-app.json.ensure_ascii = False                # Flask 2.x에서 확실하게 적용
+try:
+    question_client = OpenAI(api_key=QUESTION_KEY)
+    print("Question Router OpenAI 클라이언트 초기화 완료.")
+except Exception:
+    print("OpenAI API Key가 설정되지 않았습니다. 분석은 Mock 모드로 작동합니다.")
+    client = None
 
-CORS(app)
+class QuestionRequest(BaseModel):
+    """클라이언트로부터 받아야 하는 요청 데이터 구조"""
+    major: str = Field(..., description="지원자의 전공")
+    job_title: str = Field(..., description="지원 직무")
+    cover_letter: str = Field("", description="자기소개서 내용")
+
+class QuestionResponse(BaseModel):
+    """클라이언트에게 응답할 데이터 구조"""
+    question: List[str]
 
 # 3. 질문 생성 함수
 def generate_interview_questions(major, job_title, cover_letter=""):
@@ -37,7 +46,7 @@ def generate_interview_questions(major, job_title, cover_letter=""):
     base_prompt += "\n질문은 한 줄에 하나씩 번호 없이 출력."
 
     try:
-        resp = openai.chat.completions.create(
+        resp = question_client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "사용자의 전공/직무/자소서를 바탕으로 면접 질문을 생성하는 AI"},
@@ -52,22 +61,20 @@ def generate_interview_questions(major, job_title, cover_letter=""):
         return None
 
 # 4. 엔드포인트
-@app.route("/api/questions", methods=["POST"])
-def get_questions():
-    data = request.json or {}
-    major = data.get("major")
-    job_title = data.get("job_title")
-    cover_letter = data.get("cover_letter", "")
+@question_router.post("/api/questions", response_model=QuestionResponse)
+def get_questions(data: QuestionResponse):
+    major = data.major
+    job_title = data.job_title
+    cover_letter = data.cover_letter
 
     if not major or not job_title:
-        return jsonify({"error": "학과(major)와 직무(job_title)를 모두 제공해야 합니다."}), 400
+        raise HTTPException(status_code=400, detail="학과(major)와 직무(job_title)를 모두 제공해야 합니다.")
 
     qs = generate_interview_questions(major, job_title, cover_letter)
     if qs:
-        return jsonify({"questions": qs}), 200
-    return jsonify({"error": "면접 질문 생성에 실패했습니다."}), 500
-
+        return {"question": qs}
+    raise HTTPException(status_code=500, detail="면접 질문 생성에 실패했습니다.")
 # 5. 서버 실행 (여기 없으면 python question_ai.py 실행 시 바로 종료됨)
-if __name__ == "__main__":
-    print("✅ Flask question_ai 서버 시작: http://localhost:5002")
-    app.run(host="0.0.0.0", port=5002, debug=True)
+#if __name__ == "__main__":
+#    print("✅ Flask question_ai 서버 시작: http://localhost:5002")
+#    app.run(host="0.0.0.0", port=5002, debug=True)

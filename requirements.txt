@@ -1,18 +1,17 @@
 # FastAPI 및 관련 도구
 fastapi
 uvicorn  # voice_ai.py 로컬 실행에 사용
+gunicorn
 pydantic # 데이터 모델 정의 (FastAPI/LLM 스키마)
 python-dotenv # 환경 변수 관리
-
-# Flask 및 관련 도구
-flask
-flask-cors # CORS 처리
 
 # AWS RDS (MySQL) 접속
 pymysql
 
 # OpenAI API 호출
 openai
+
+python-multipart
 
 # 기타 유틸리티
 # typing # Python 3.5+ 표준 라이브러리이므로 보통 필요 없지만 명시적 추가 가능
