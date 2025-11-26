@@ -6,13 +6,20 @@ Resume Feedback API
 
 import os
 import pymysql
+<<<<<<< HEAD
 from typing import List
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, APIRouter
+=======
+from datetime import datetime
+from fastapi import FastAPI, HTTPException
+>>>>>>> 85bff07 (resume 재변경)
 from pydantic import BaseModel, Field
+from dotenv import load_dotenv
 from openai import OpenAI
 from dotenv import load_dotenv # 환경 변수 로드를 위해 추가
 
+<<<<<<< HEAD
 # 환경 변수 로드
 load_dotenv()
 
@@ -28,6 +35,12 @@ try:
 except Exception:
     print("OpenAI API Key가 설정되지 않았습니다. 분석은 Mock 모드로 작동합니다.")
     client = None
+=======
+#환경변수 
+load_dotenv()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+app = FastAPI(title="Resume Feedback API")
+>>>>>>> 85bff07 (resume 재변경)
 
 # RDS DB 연결 정보 로드 (HEAD 브랜치의 DB 로직 채택)
 DB_HOST = os.getenv("RDS_DB_HOST")
@@ -123,9 +136,14 @@ def save_feedback_to_rds(userId: int, resume_text: str, feedback: str) -> int:
         print(f"Database Save Error: {e}")
         raise HTTPException(status_code=500, detail="피드백 데이터베이스 저장에 실패했습니다.")
 
+<<<<<<< HEAD
 
 # FastAPI 엔드포인트
 @resume_router.post("/resume/feedback", response_model=FeedbackResponse)
+=======
+#FastAPI 엔드포인트
+@app.post("/resume/feedback", response_model=FeedbackResponse)
+>>>>>>> 85bff07 (resume 재변경)
 async def resume_feedback(req: ResumeInput):
 
     # OpenAI 호출 -> 피드백 생성
@@ -137,5 +155,9 @@ async def resume_feedback(req: ResumeInput):
     # DB 저장 성공 후 피드백과 사용자 ID를 반환
     return FeedbackResponse(
         feedback=feedback,
+<<<<<<< HEAD
         userId=req.userId
+=======
+        userId=req.userId # Spring에서 DB 저장을 위해 사용할 userId 반환
+>>>>>>> 85bff07 (resume 재변경)
     )
