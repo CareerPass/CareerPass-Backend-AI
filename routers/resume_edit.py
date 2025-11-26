@@ -13,10 +13,10 @@ from pydantic import BaseModel, Field
 from openai import OpenAI
 from dotenv import load_dotenv # 환경 변수 로드를 위해 추가
 
-# 환경 변수 로드 (HEAD 브랜치에서 가져옴)
+# 환경 변수 로드
 load_dotenv()
 
-# FastAPI 라우터 설정 (목표 브랜치 구조 채택)
+# FastAPI 라우터 설정 
 resume_router = APIRouter()
 
 # 환경변수 및 OpenAI 클라이언트 초기화 
@@ -194,6 +194,7 @@ system_message = """
 
 # LLM 호출
 def generate_feedback(resume_text: str) -> str:
+    # client 객체 유무 체크 로직 유지
     if not client:
         return "API 키가 설정되지 않음"
     try:
@@ -211,11 +212,10 @@ def generate_feedback(resume_text: str) -> str:
         raise HTTPException(status_code=500, detail="LLM 피드백 생성에 실패했습니다.")
 
 
-# DB 저장 (목표 브랜치에서 가져옴)
+# DB 저장
 def save_feedback_to_rds(userId: int, resume_text: str, feedback: str) -> int:
     if not db or not cursor:
         print("DB 연결 오류로 인해 저장 실패.")
-        # HTTPException의 detail 값은 명확하게 수정
         raise HTTPException(status_code=500, detail="데이터베이스 연결 문제로 인해 저장에 실패했습니다.")
     try:
         now = datetime.now()
@@ -232,20 +232,18 @@ def save_feedback_to_rds(userId: int, resume_text: str, feedback: str) -> int:
         raise HTTPException(status_code=500, detail="피드백 데이터베이스 저장에 실패했습니다.")
 
 
-# FastAPI 엔드포인트 (라우터 구조 및 DB 저장 활성화)
+# FastAPI 엔드포인트
 @resume_router.post("/resume/feedback", response_model=FeedbackResponse)
 async def resume_feedback(req: ResumeInput):
 
     # OpenAI 호출 -> 피드백 생성
     feedback = generate_feedback(req.resumeContent)
 
-    # DB에 저장
-    # 목표 브랜치의 의도에 따라 DB 저장 로직을 추가하고
-    # 현재 브랜치의 주석 처리된 반환 로직을 수정했습니다.
+    # DB에 저장 로직 추가
     save_feedback_to_rds(req.userId, req.resumeContent, feedback)
     
     # DB 저장 성공 후 피드백과 사용자 ID를 반환
     return FeedbackResponse(
         feedback=feedback,
-        userId=req.userId # Spring에서 DB 저장을 위해 사용할 userId 반환
+        userId=req.userId
     )

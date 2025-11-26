@@ -19,7 +19,7 @@ from openai import OpenAI
 
 voice_router = APIRouter()
 
-VOICE_KEY = os.getenv("QUESTION_VOICE_OPENAI_KEY")
+VOICE_KEY = os.environ.get("QUESTION_VOICE_OPENAI_KEY")
 
 try:
     client = OpenAI(api_key=VOICE_KEY)
