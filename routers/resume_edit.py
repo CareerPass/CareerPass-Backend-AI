@@ -6,63 +6,25 @@ Resume Feedback API
 
 import os
 import pymysql
-from typing import List
 from datetime import datetime
+from typing import List
 from fastapi import FastAPI, HTTPException, APIRouter
 from pydantic import BaseModel, Field
 from openai import OpenAI
 
-
 resume_router = APIRouter()
 
-#환경변수 
-RESUME_KEY = os.getenv("RESUME_OPENAI_KEY")
-try:
-    client = OpenAI(api_key=RESUME_KEY)
-    print("Resume Router OpenAI 클라이언트 초기화 완료.")
-except Exception:
-    print("OpenAI API Key가 설정되지 않았습니다. 분석은 Mock 모드로 작동합니다.")
-    client = None
+RESUME_KEY = os.environ.get("RESUME_OPENAI_KEY")
 
-DB_HOST = os.getenv("RDS_DB_HOST")
-DB_USER = os.getenv("RDS_DB_USER")
-DB_PASSWORD = os.getenv("RDS_DB_PASSWORD")
-DB_NAME = os.getenv("RDS_DB_NAME")
-
-#실 배포 환경으로 AWS RDS MYSQL 사용
-db = pymysql.connect(
-    host=DB_HOST,
-    user=DB_USER,
-    password=DB_PASSWORD,
-    database=DB_NAME,
-    charset="utf8mb4"
-)
-
-cursor = db.cursor()
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS resume_feedback (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    resume_text TEXT,
-    feedback_text TEXT,
-    created_at DATETIME
-);
-""")
-
-db.commit()
-
-
-
-#요청 + 응답 모델
+#클라이언트가 서버로
 class ResumeInput(BaseModel):
     userId: int
     resumeContent: str
     
-class ResumeFeedback(BaseModel):
+#서버가 클라이언트한테로
+class FeedbackResponse(BaseModel):
     feedback: str
-    savedId: int
-
+    userId: int
 
 
 #프롬포트
@@ -184,54 +146,26 @@ system_message = """
 
 #LLM 호출
 def generate_feedback(resume_text: str) -> str:
-    if not client:
-        return "API 키가 설정되지 않음"
-    try:
-        response = client.responses.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": f"사용자가 제출한 이력서 내용입니다:\n\n{resume_text}"}
-            ]
-        )
-        return response.output[0].content[0].text
-    
-    except Exception as e:
-        print(f"LLM 호출 실패: {e}")
-        raise HTTPException(status_code=500, detail="LLM 피드백 생성에 실패했습니다.")
-
-
-
-
-#DB 저장
-def save_feedback_to_rds(userId: int, resume_text: str, feedback: str) -> int:
-    if not db or not cursor:
-        print("DB 연결 오류로 인해 저장 실패.")
-        raise HTTPException(status_code=500, deatil="데이터베이스 연결 문제로 인해 저장에 실패했습니다.")
-    try:
-        now = datetime.now()
-        sql = """
-            INSERT INTO resume_feedback (user_id, resume_text, feedback_text, created_at)
-            VALUES (%s, %s, %s, %s)
-        """
-        cursor.execute(sql, (userId, resume_text, feedback, now))
-        db.commit()
-        return cursor.lastrowid
-    except Exception as e:
-        db.rollback()
-        print(f"Database Save Error: {e}")
-        raise HTTPException(status_code=500, detail="피드백 데이터베이스 저장에 실패했습니다.")
+    response = client.responses.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": f"사용자가 제출한 이력서 내용입니다:\n\n{resume_text}"}
+        ]
+    )
+    return response.output[0].content[0].text
 
 
 
 #FastAPI 엔드포인트
-@resume_router.post("/resume/feedback", response_model=ResumeFeedback)
+@resume_router.post("/resume/feedback", response_model=FeedbackResponse)
 async def resume_feedback(req: ResumeInput):
 
+    #OpenAI 호출 -> 피드백 생성
     feedback = generate_feedback(req.resumeContent)
-    saved_id = save_feedback_to_rds(req.userId, req.resumeContent, feedback)
 
-    return ResumeFeedback(
+    # 디비에 접근 안하고 피드백과 사용자 ID를 즉시 반환
+    return FeedbackResponse(
         feedback=feedback,
-        savedId=saved_id
+        userId=req.userId # Spring에서 DB 저장을 위해 사용할 userId 반환
     )
