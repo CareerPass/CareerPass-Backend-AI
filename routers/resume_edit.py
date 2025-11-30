@@ -1,38 +1,47 @@
 # -*- coding: utf-8 -*-
 """
 Resume Feedback API
-사용자 -> 이력서 입력 -> OpenAI 피드백 생성 -> RDS 저장
+사용자 -> 이력서 입력 -> OpenAI 피드백 생성 -> 반환
 """
 
 import os
-import pymysql
 from datetime import datetime
-from typing import List
-from fastapi import FastAPI, HTTPException, APIRouter
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, APIRouter, HTTPException
+from pydantic import BaseModel
 from openai import OpenAI
+from dotenv import load_dotenv
 
+# 🔹 .env 파일 로드
+load_dotenv()
+
+# 🔹 FastAPI app
+app = FastAPI()
 resume_router = APIRouter()
 
-RESUME_KEY = os.environ.get("RESUME_OPENAI_KEY")
+# 🔹 OpenAI Key 가져오기
+RESUME_KEY = os.getenv("RESUME_OPENAI_KEY")
 
 try:
     resume_client = OpenAI(api_key=RESUME_KEY)
     print("Resume Router OpenAI 클라이언트 초기화 완료.")
-except Exception:
-    print("OpenAI API Key가 설정되지 않았습니다. 분석은 Mock 모드로 작동합니다.")
-    client = None
+except Exception as e:
+    print("❌ OpenAI API Key 초기화 실패 → Mock 모드로 작동합니다.")
+    print(e)
+    resume_client = None
 
-#클라이언트가 서버로
+
+# ------------------------------- DTO ---------------------------------
+
 class ResumeInput(BaseModel):
     userId: int
     resumeContent: str
-    
-#서버가 클라이언트한테로
+
 class FeedbackResponse(BaseModel):
     feedback: str
     userId: int
 
+
+# ------------------------------- SYSTEM PROMPT ---------------------------------
 
 #프롬포트
 system_message = """
@@ -150,30 +159,46 @@ system_message = """
 """
 
 
+# ------------------------------- OPENAI CALL ---------------------------------
 
-#LLM 호출
 def generate_feedback(resume_text: str) -> str:
-    response = client.responses.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": system_message},
-            {"role": "user", "content": f"사용자가 제출한 이력서 내용입니다:\n\n{resume_text}"}
-        ]
+    """OpenAI API 호출 → 피드백 생성"""
+
+    # 🔹 API KEY 없으면 Mock 텍스트 반환
+    if resume_client is None:
+        return "현재 OpenAI Key가 없어 테스트용 더미 피드백을 반환합니다."
+
+    # system + user 프롬프트를 하나의 문자열로 합쳐서 사용
+    prompt = (
+        system_message
+        + "\n\n"
+        + "아래는 사용자가 제출한 이력서(자기소개서) 내용입니다. 위 가이드라인에 따라 한국어로 상세 피드백을 작성해 주세요.\n\n"
+        + resume_text
     )
-    return response.output[0].content[0].text
+
+    try:
+        response = resume_client.responses.create(
+            model="gpt-4o-mini",   # gpt-4o-mini 그대로 사용 가능
+            input=prompt           # ⬅️ messages 대신 input 한 줄
+        )
+        return response.output[0].content[0].text
+    except Exception as e:
+        print("❌ OpenAI 호출 중 오류:", e)
+        return "AI 분석 중 오류가 발생했습니다. 내용을 다시 입력해 주세요."
 
 
+# ------------------------------- ENDPOINT ---------------------------------
 
-#FastAPI 엔드포인트
 @resume_router.post("/resume/feedback", response_model=FeedbackResponse)
 async def resume_feedback(req: ResumeInput):
+    """스프링 → 파이썬: 피드백 생성 후 즉시 반환"""
 
-    #OpenAI 호출 -> 피드백 생성
     feedback = generate_feedback(req.resumeContent)
 
-    # 디비에 접근 안하고 피드백과 사용자 ID를 즉시 반환
     return FeedbackResponse(
         feedback=feedback,
-        userId=req.userId # Spring에서 DB 저장을 위해 사용할 userId 반환
+        userId=req.userId
     )
 
+# FastAPI 라우터 등록
+app.include_router(resume_router)
