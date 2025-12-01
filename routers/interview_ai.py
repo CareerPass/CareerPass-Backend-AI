@@ -69,9 +69,11 @@ def create_fine_tuning_example(dispatch: AnswerDispatch, analysis: AnswerAnalysi
         "반드시 JSON 스키마에 맞춰 결과를 출력해야 합니다."
     )
     user_content = (
-        f"--- 평가 요청 ---\n자기소개서(원문): {dispatch.resumeContent}\n"
-        f"질문: {dispatch.questionText}\n답변(transcript): {dispatch.transcript}\n"
-        f"소요 시간(ms): {dispatch.durationMs}\n\n위 답변을 평가하고, JSON 스키마에 맞춰 결과를 출력해주세요."
+        f"--- 평가 요청 ---\n"
+        f"자기소개서(원문): {dispatch.resumeContent}\n"
+        f"질문: {dispatch.questionText}\n"
+        f"답변(transcript): {dispatch.transcript}\n\n"
+        f"위 답변을 평가하고, JSON 스키마에 맞춰 결과를 출력해주세요."
     )
     assistant_content = analysis.model_dump_json()
 
