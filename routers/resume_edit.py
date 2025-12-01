@@ -9,14 +9,17 @@ from datetime import datetime
 from fastapi import FastAPI, APIRouter, HTTPException
 from pydantic import BaseModel
 from openai import OpenAI
+from dotenv import load_dotenv
 
+# .env 파일 로드
+load_dotenv()
 
-# 🔹 FastAPI app
+# FastAPI app
 app = FastAPI()
 resume_router = APIRouter()
 
-# 🔹 OpenAI Key 가져오기
-RESUME_KEY = os.environ.get("RESUME_OPENAI_KEY")
+# OpenAI Key 가져오기
+RESUME_KEY = os.getenv("RESUME_OPENAI_KEY")
 
 try:
     resume_client = OpenAI(api_key=RESUME_KEY)
@@ -38,18 +41,20 @@ class FeedbackResponse(BaseModel):
     original_resume: str
     feedback: str
     regen_resume: str
+    regen_toss_resume: str
+    
 
 
 # ------------------------------- SYSTEM PROMPT ---------------------------------
 
-#프롬포트
 system_message = """
 #이력서를 피드백하는 에이전트 시스템 프롬프트 
 
 ##역할 정의
-당신은 취업 준비 대학생을 위한 이략서 컨설턴트 전문가입니다.
-채용 담당자의 관점에서 이력서를 분석하고, 
+당신은 취업 준비 대학생을 위한 이력서 컨설턴트 전문가입니다.
+회사 채용 담당자의 관점에서 이력서를 분석하고, 
 서류 전형 통과율을 높이기 위한 구체적이고 실행 가능한 피드백을 제공해야합니다.
+
 
 ##주요 목표
 - 이력서 스크리닝(1차 서류 탈락)을 방지하는 것이 최우선적인 목표
@@ -156,6 +161,7 @@ system_message = """
 - 학생의 노력과 경험을 인정하며 시작
 
 각 섹션마다 줄 띄어쓰기를 적용해서 가독성 좋게 출력해야함
+가독성 좋게 부탁해
 
 """
 
@@ -165,7 +171,7 @@ system_message = """
 def generate_feedback(resume_text: str) -> str:
     """OpenAI API 호출 → 피드백 생성"""
 
-    # 🔹 API KEY 없으면 Mock 텍스트 반환
+    # API KEY 없으면 Mock 텍스트 반환
     if resume_client is None:
         return "현재 OpenAI Key가 없어 테스트용 더미 피드백을 반환합니다."
 
@@ -184,7 +190,7 @@ def generate_feedback(resume_text: str) -> str:
         )
         return response.output[0].content[0].text
     except Exception as e:
-        print("❌ OpenAI 호출 중 오류:", e)
+        print(" OpenAI 호출 중 오류:", e)
         return "AI 분석 중 오류가 발생했습니다. 내용을 다시 입력해 주세요."
 
 # 자기소개서 재생성 함수    
@@ -193,11 +199,11 @@ def regenerate_resume(original_resume_text: str, feedback_text: str) -> str:
     주어진 피드백을 바탕으로 이력서 내용을 재생성하고 개선합니다.
     """
 
-    # 🔹 API KEY 없으면 Mock 텍스트 반환
+    # API KEY 없으면 Mock 텍스트 반환
     if resume_client is None:
         return "현재 OpenAI Key가 없어 테스트용 더미 재생성 이력서를 반환합니다."
 
-    # 💡 재생성 프롬프트 구성: 원본 이력서 + 피드백을 함께 제공하여 개선을 요청합니다.
+    # 재생성 프롬프트 구성: 원본 이력서 + 피드백을 함께 제공하여 개선을 요청합니다.
     prompt = (
         "아래는 **사용자가 제출한 원본 이력서 내용**입니다.\n\n"
         + "--- 원본 이력서 ---\n"
@@ -214,12 +220,79 @@ def regenerate_resume(original_resume_text: str, feedback_text: str) -> str:
             model="gpt-4o-mini",
             input=prompt
         )
-        # ⚠️ 응답 구조는 사용하신 OpenAI 라이브러리 버전에 따라 다를 수 있습니다.
+        # 응답 구조는 사용하신 OpenAI 라이브러리 버전에 따라 다를 수 있습니다.
         # 기존 코드와 동일한 구조를 따릅니다.
         return response.output[0].content[0].text
     
     except Exception as e:
-        print("❌ OpenAI 호출 중 오류:", e)
+        print("OpenAI 호출 중 오류:", e)
+        return "AI 분석 중 오류가 발생했습니다. 내용을 다시 시도해 주세요."
+    
+#자기소개서 토스 인재상 재생성 함수
+def regenerate_toss_resume(original_resume_text: str, feedback_text: str) -> str:
+    """
+    주어진 피드백을 바탕으로 이력서 내용을 재생성하고 개선합니다.
+    """
+
+    # API KEY 없으면 Mock 텍스트 반환
+    if resume_client is None:
+        return "현재 OpenAI Key가 없어 테스트용 더미 재생성 이력서를 반환합니다."
+
+    # 재생성 프롬프트 구성: 원본 이력서 + 피드백을 함께 제공하여 개선을 요청합니다.
+    prompt = (
+        "아래는 **사용자가 제출한 원본 이력서 내용**입니다.\n\n"
+        + "--- 원본 이력서 ---\n"
+        + original_resume_text
+        + "\n\n"
+        + """아래는 **AI가 생성한 상세 피드백**입니다. 이 피드백을 100% 반영하여 원본 이력서 내용을 개선해 주세요. 
+        응답은 오직 **개선된 이력서 내용**만 포함해야 합니다. 줄을 띄어쓰지 말고 한 줄로 이어서 작성해주세요. 
+        이름, 전화번호, 이메일, 학력, 학점 등은 작성하지 않습니다. 오로지 이력서에 작성된 경험 및 활동에 해당하는 부분만 개선합니다.
+        이 자소서는 토스 기업의 인재상을 반영하여 작성되어야합니다. 토스 인재상 핵심 가치는 다음과 같습니다.
+        1) 깊은 몰입 (Deep Focus & Ownership)
+        - 각자의 방식으로 문제에 깊게 몰입하고 주도적으로 해결함
+        - 맡은 일에 대해 스스로 결정하고 끝까지 책임지는 태도
+        - 지시를 기다리지 않고 필요하면 먼저 움직이는 사람
+        
+        2) DRI 기반 책임감 있는 전문가
+        - 맡은 일에 대한 최종 의사결정권(DRI)을 가지고 판단함
+        - 결과에 대한 모든 책임을 스스로 짐
+        - 필요한 정보를 수집해 전문가로서 합리적 결정을 내릴 수 있는 사람
+        
+        3) 높은 윤리성과 자율성
+        - 자율을 악용하지 않고 스스로 기준을 지킬 줄 아는 사람
+        - 불필요한 규칙 없이도 스스로 일을 통제하고 정직하게 수행함
+        - 신뢰를 기반으로 협력할 수 있는 도덕성 보유
+
+        4) 투명한 정보 공유
+        - 정보 비대칭을 없애기 위해 정보를 모두에게 개방
+        - 숨기거나 정치적으로 움직이지 않으며, 모두가 동일한 정보 기반에서 일함
+        - 협업을 위해 필요한 정보를 능동적으로 찾아 공유
+
+        5) 빠른 실패와 학습
+        - 실패를 두려워하지 않고 빠르게 시도하고 개선하는 사람
+        - 실패에서 배운 점을 구조적으로 정리하고 다음 실행에 반영
+        - 빠른 시도 → 실패 → 학습 → 재도전의 사이클을 긍정적으로 받아들임
+
+        이 인재상은 자기소개서 개선 시 다음과 같이 활용되어야합니다.
+        - 지원자가 맡은 일에 대한 주도성과 책임감을 보여주는 표현 강화
+        - 불필요한 장식 대신 '몰입·책임·자율·투명·학습'의 키워드를 반영한 경험 강조
+        - 프로젝트나 활동에서의 '결정 경험, 빠른 실험, 실패 복기, 자율적 행동' 등을 구체적으로 서술하도록 유도\n\n"""
+        + "--- 피드백 내용 ---\n"
+        + feedback_text
+    )
+
+    try:
+        # OpenAI API 호출 (gpt-4o-mini 그대로 사용)
+        response = resume_client.responses.create(
+            model="gpt-4o-mini",
+            input=prompt
+        )
+        # 응답 구조는 사용하신 OpenAI 라이브러리 버전에 따라 다를 수 있습니다.
+        # 기존 코드와 동일한 구조를 따릅니다.
+        return response.output[0].content[0].text
+    
+    except Exception as e:
+        print("OpenAI 호출 중 오류:", e)
         return "AI 분석 중 오류가 발생했습니다. 내용을 다시 시도해 주세요."
 
 # ------------------------------- ENDPOINT ---------------------------------
@@ -230,11 +303,14 @@ async def resume_feedback(req: ResumeInput):
 
     feedback = generate_feedback(req.resumeContent)
     regenresume = regenerate_resume(req.resumeContent, feedback)
+    regentossresume = regenerate_toss_resume(req.resumeContent, feedback)
+    
     return FeedbackResponse(
         userId=req.userId,
         original_resume=req.resumeContent,
         feedback=feedback,
         regen_resume=regenresume,
+        regen_toss_resume=regentossresume
     )
 
 # FastAPI 라우터 등록
