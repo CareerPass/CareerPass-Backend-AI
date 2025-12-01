@@ -15,8 +15,8 @@ from openai import OpenAI
 interview_router = APIRouter()
 
 # 환경 변수에서 API Key 및 모델 ID 설정
-INTERVIEW_KEY = os.environ.get("INTERVEIW_OPENAI_KEY")
-CUSTOM_FINETUNED_MODEL_ID = os.environ.get("ft:gpt-3.5-turbo-0125:personal:interview-scoring-v2-csv:CfJUmiTI")
+INTERVIEW_KEY = os.environ.get("INTERVIEW_OPENAI_KEY")
+CUSTOM_FINETUNED_MODEL_ID = os.environ.get("INTERVIEW_FINEDTUNED_MODEL_ID")
 
 try:
     client = OpenAI(api_key=INTERVIEW_KEY)

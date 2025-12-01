@@ -28,4 +28,4 @@ EXPOSE 8000
 
 # 8. 컨테이너가 시작될 때 실행할 명령 (Gunicorn + Uvicorn Worker 사용)
 #    Gunicorn 워커 4개로 main_api의 app 객체를 구동합니다.
-CMD ["gunicorn", "main_api:app", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000"]
+CMD ["gunicorn", "main_api:app", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--log-file", "-", "--error-logfile", "-"]
