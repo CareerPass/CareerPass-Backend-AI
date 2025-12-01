@@ -304,13 +304,13 @@ def regenerate_toss_resume(original_resume_text: str, feedback_text: str) -> str
 async def resume_feedback(req: ResumeInput):
     """스프링 → 파이썬: 피드백 생성 후 즉시 반환"""
 
-    feedback = generate_feedback(req.resumeContent)
-    regenresume = regenerate_resume(req.resumeContent, feedback)
-    regentossresume = regenerate_toss_resume(req.resumeContent, feedback)
+    feedback = generate_feedback(req.resume_content)
+    regenresume = regenerate_resume(req.resume_content, feedback)
+    regentossresume = regenerate_toss_resume(req.resume_content, feedback)
     
     return FeedbackResponse(
         userId=req.userId,
-        original_resume=req.resumeContent,
+        original_resume=req.resume_content,
         feedback=feedback,
         regen_resume=regenresume,
         regen_toss_resume=regentossresume
