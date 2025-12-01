@@ -14,7 +14,7 @@ try:
     print("Question Router OpenAI 클라이언트 초기화 완료.")
 except Exception:
     print("OpenAI API Key가 설정되지 않았습니다. 분석은 Mock 모드로 작동합니다.")
-    client = None
+    question_client = None
 
 class QuestionRequest(BaseModel):
     """클라이언트로부터 받아야 하는 요청 데이터 구조"""

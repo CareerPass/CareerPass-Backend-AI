@@ -41,7 +41,6 @@ class AnswerDispatch(BaseModel):
     answerId: int
     questionText: str
     transcript: str = Field(..., description="A팀 Voice AI의 STT 결과")
-    durationMs: int
     resumeContent: str
     meta: InterviewMeta
 
