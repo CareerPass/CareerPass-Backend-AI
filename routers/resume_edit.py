@@ -7,7 +7,7 @@ Resume Feedback API
 import os
 from datetime import datetime
 from fastapi import FastAPI, APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from openai import OpenAI
 from dotenv import load_dotenv
 
@@ -34,7 +34,10 @@ except Exception as e:
 
 class ResumeInput(BaseModel):
     userId: int
-    resumeContent: str
+    resume_content: str = Field(alias="resumeContent")
+
+    class Config:
+        allow_population_by_field_name = True
 
 class FeedbackResponse(BaseModel):
     userId: int
