@@ -62,7 +62,7 @@ def generate_interview_questions(major, job_title, cover_letter=""):
 
 # 4. 엔드포인트
 @question_router.post("/api/questions", response_model=QuestionResponse)
-def get_questions(data: QuestionResponse):
+def get_questions(data: QuestionRequest):
     major = data.major
     job_title = data.job_title
     cover_letter = data.cover_letter

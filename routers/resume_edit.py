@@ -9,17 +9,14 @@ from datetime import datetime
 from fastapi import FastAPI, APIRouter, HTTPException
 from pydantic import BaseModel
 from openai import OpenAI
-from dotenv import load_dotenv
 
-# 🔹 .env 파일 로드
-load_dotenv()
 
 # 🔹 FastAPI app
 app = FastAPI()
 resume_router = APIRouter()
 
 # 🔹 OpenAI Key 가져오기
-RESUME_KEY = os.getenv("RESUME_OPENAI_KEY")
+RESUME_KEY = os.environ.get("RESUME_OPENAI_KEY")
 
 try:
     resume_client = OpenAI(api_key=RESUME_KEY)
