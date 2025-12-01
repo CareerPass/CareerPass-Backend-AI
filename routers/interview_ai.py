@@ -114,7 +114,7 @@ def run_analysis_with_finetuned_model(dispatch: AnswerDispatch) -> AnswerAnalysi
     if not client or not raw_llm_output:
         print("Mock 데이터를 사용하여 분석을 실행합니다.")
         raw_llm_output = json.dumps({
-            "score": 88, "timeMs": dispatch.durationMs, "fluency": 5, "contentDepth": 4,
+            "score": 88, "timeMs": 0, "fluency": 5, "contentDepth": 4,
             "structure": 4, "fillerCount": 0,
             "improvements": [f"Mock 결과: 답변 시작 시 '음...'과 같은 필러가 없도록 연습하세요."],
             "strengths": ["직무 경험과 답변의 연관성이 높습니다."], "risks": ["답변 길이가 다소 짧았습니다."]
