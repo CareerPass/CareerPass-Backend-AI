@@ -9,7 +9,12 @@ from datetime import datetime
 from fastapi import FastAPI, APIRouter, HTTPException
 from pydantic import BaseModel, Field, validator
 from openai import OpenAI, AsyncOpenAI
+import logging
 
+logging.basicConfig(level=logging.INFO, # INFO 레벨 이상 로그 출력
+                    format='%(asctime)s - %(levelname)s - %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S')
+logger = logging.getLogger(__name__)
 
 resume_router = APIRouter()
 
@@ -187,6 +192,8 @@ system_message = """
 async def generate_feedback_async(resume_text: str) -> str:
     """OpenAI API 호출 → 피드백 생성"""
 
+    logger.info(f"generate_feedback_async 시작: Content 길이={len(resume_text)}")
+
     # API KEY 없으면 Mock 텍스트 반환
     if resume_client is None:
         return "현재 OpenAI Key가 없어 테스트용 더미 피드백을 반환합니다."
@@ -200,13 +207,15 @@ async def generate_feedback_async(resume_text: str) -> str:
     )
 
     try:
-        response = await resume_client.responses.create(
-            model="gpt-4o-mini",   # gpt-4o-mini 그대로 사용 가능
-            input=prompt           # ⬅️ messages 대신 input 한 줄
+        response = await resume_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}]
         )
-        return response.output[0].content[0].text
+        logger.info("generate_feedback_async: OpenAI 호출 성공")
+        return response.choices[0].message.content
     except Exception as e:
         print(" OpenAI 호출 중 오류:", e)
+        logger.error(f"generate_feedback_async: OpenAI 호출 중 오류 발생", exc_info=True)
         return "AI 분석 중 오류가 발생했습니다. 내용을 다시 입력해 주세요."
 
 # 자기소개서 재생성 함수    
@@ -214,6 +223,7 @@ async def regenerate_resume_async(original_resume_text: str, feedback_text: str)
     """
     주어진 피드백을 바탕으로 이력서 내용을 재생성하고 개선합니다.
     """
+    logger.info("regenerate_resume_async 시작")
 
     # API KEY 없으면 Mock 텍스트 반환
     if resume_client is None:
@@ -236,12 +246,14 @@ async def regenerate_resume_async(original_resume_text: str, feedback_text: str)
             model="gpt-4o-mini",
             input=prompt
         )
+        logger.info("regenerate_resume_async: OpenAI 호출 성공")
         # 응답 구조는 사용하신 OpenAI 라이브러리 버전에 따라 다를 수 있습니다.
         # 기존 코드와 동일한 구조를 따릅니다.
         return response.output[0].content[0].text
     
     except Exception as e:
         print("OpenAI 호출 중 오류:", e)
+        logger.error(f"regenerate_resume_async: OpenAI 호출 중 오류 발생", exc_info=True)
         return "AI 분석 중 오류가 발생했습니다. 내용을 다시 시도해 주세요."
     
 #자기소개서 토스 인재상 재생성 함수
@@ -249,6 +261,7 @@ async def regenerate_toss_resume_async(original_resume_text: str, feedback_text:
     """
     주어진 피드백을 바탕으로 이력서 내용을 재생성하고 개선합니다.
     """
+    logger.info("regenerate_toss_resume_async 시작")
 
     # API KEY 없으면 Mock 텍스트 반환
     if resume_client is None:
@@ -303,12 +316,14 @@ async def regenerate_toss_resume_async(original_resume_text: str, feedback_text:
             model="gpt-4o-mini",
             input=prompt
         )
+        logger.info("regenerate_toss_resume_async: OpenAI 호출 성공")
         # 응답 구조는 사용하신 OpenAI 라이브러리 버전에 따라 다를 수 있습니다.
         # 기존 코드와 동일한 구조를 따릅니다.
         return response.output[0].content[0].text
     
     except Exception as e:
         print("OpenAI 호출 중 오류:", e)
+        logger.error(f"regenerate_toss_resume_async: OpenAI 호출 중 오류 발생", exc_info=True)
         return "AI 분석 중 오류가 발생했습니다. 내용을 다시 시도해 주세요."
 
 # ------------------------------- ENDPOINT ---------------------------------

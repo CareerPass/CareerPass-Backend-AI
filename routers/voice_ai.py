@@ -12,6 +12,10 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 import openai
 from openai import OpenAI
+import logging
+
+logging.basicConfig(level=logging.INFO)
+
 
 # -----------------------------
 # 0. 환경 변수 / OpenAI 설정
