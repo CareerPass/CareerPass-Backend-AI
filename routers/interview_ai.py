@@ -43,7 +43,7 @@ class InterviewMeta(BaseModel):
 
 class AnswerDispatch(BaseModel):
     """B팀 API가 A팀으로부터 받아야 하는 전체 입력 데이터 구조"""
-    answerId: int
+    answerId: int = Field(default=0)
     questionText: str
     transcript: str = Field(..., description="A팀 Voice AI의 STT 결과")
     resumeContent: str
@@ -51,14 +51,14 @@ class AnswerDispatch(BaseModel):
 
 class AnswerAnalysisResult(BaseModel):
     """B팀 LLM의 최종 출력 스키마 (면접 피드백 항목)"""
-    score: int = Field(..., ge=0, le=100)
+    score: int = Field(default=0, ge=0, le=100)
     timeMs: int = Field(default=0)
-    fluency: int = Field(..., ge=0, le=5)
-    contentDepth: int = Field(..., ge=0, le=5)
-    structure: int = Field(..., ge=0, le=5)
-    fillerCount: int
-    improvements: List[str]
-    strengths: List[str]
+    fluency: int = Field(default=0, ge=0, le=5)
+    contentDepth: int = Field(default=0, ge=0, le=5)
+    structure: int = Field(default=0, ge=0, le=5)
+    fillerCount: int = Field(default=0)
+    improvements: List[str] = Field(default_factory=list)
+    strengths: List[str] = Field(default_factory=list)
     risks: List[str] = Field(default_factory=list)
 
 # ==============================================================================
